@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "iconswap",
+  "version": "${version}",
+  "name": "Icon Swap",
+  "description": "Replaces the game window icon with a PNG from the icons folder, live.",
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["example.iconswap.IconSwap"]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}
