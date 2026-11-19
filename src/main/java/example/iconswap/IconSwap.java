@@ -4,9 +4,11 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
-import org.lwjgl.glfw.GLFW;
-import org.lwjgl.glfw.GLFWImage;
-import org.lwjgl.system.MemoryStack;
+import org.lwjgl.sdl.SDLKeyboard;
+import org.lwjgl.sdl.SDLPixels;
+import org.lwjgl.sdl.SDLSurface;
+import org.lwjgl.sdl.SDLVideo;
+import org.lwjgl.sdl.SDL_Surface;
 import org.lwjgl.system.MemoryUtil;
 
 import javax.imageio.ImageIO;
@@ -22,7 +24,7 @@ public class IconSwap implements ClientModInitializer {
     public void onInitializeClient() {
         try { Files.createDirectories(DIR); } catch (Exception ignored) {}
         ClientLifecycleEvents.CLIENT_STARTED.register(mc -> {
-            apply();
+            apply(mc);
             Thread t = new Thread(() -> watch(mc), "icon-watcher");
             t.setDaemon(true);
             t.start();
@@ -40,7 +42,7 @@ public class IconSwap implements ClientModInitializer {
                 k.pollEvents();
                 k.reset();
                 Thread.sleep(300);
-                mc.execute(IconSwap::apply);
+                mc.execute(() -> apply(mc));
             }
         } catch (Exception e) { e.printStackTrace(); }
     }
@@ -54,12 +56,27 @@ public class IconSwap implements ClientModInitializer {
         }
     }
 
-    static void apply() {
+    static long windowHandle(Minecraft mc) {
+        try {
+            Object w = mc.getWindow();
+            for (String name : new String[]{"handle", "getHandle", "getWindow"}) {
+                try {
+                    Object r = w.getClass().getMethod(name).invoke(w);
+                    if (r instanceof Long l && l != 0L) return l;
+                } catch (NoSuchMethodException ignored) {}
+            }
+        } catch (Exception e) { e.printStackTrace(); }
+        return SDLKeyboard.SDL_GetKeyboardFocus();
+    }
+
+    static void apply(Minecraft mc) {
         try {
             Path f = find();
             if (f == null) return;
             BufferedImage img = ImageIO.read(f.toFile());
             if (img == null) return;
+            long win = windowHandle(mc);
+            if (win == 0L) return;
             int w = img.getWidth(), h = img.getHeight();
             int[] px = img.getRGB(0, 0, w, h, null, 0, w);
             ByteBuffer buf = MemoryUtil.memAlloc(w * h * 4);
@@ -68,10 +85,11 @@ public class IconSwap implements ClientModInitializer {
                    .put((byte) p).put((byte) (p >>> 24));
             }
             buf.flip();
-            try (MemoryStack st = MemoryStack.stackPush()) {
-                GLFWImage.Buffer ib = GLFWImage.malloc(1, st);
-                ib.position(0).width(w).height(h).pixels(buf);
-                GLFW.glfwSetWindowIcon(GLFW.glfwGetCurrentContext(), ib);
+            SDL_Surface surf = SDLSurface.SDL_CreateSurfaceFrom(
+                w, h, SDLPixels.SDL_PIXELFORMAT_RGBA32, buf, w * 4);
+            if (surf != null) {
+                SDLVideo.SDL_SetWindowIcon(win, surf);
+                SDLSurface.SDL_DestroySurface(surf);
             }
             MemoryUtil.memFree(buf);
         } catch (Exception e) { e.printStackTrace(); }
